@@ -1,50 +1,66 @@
 module.exports = (io) => {
     io.on('connection', (socket) => {
-        console.log('New client connected:', socket.id);
+        console.log('--- NEW SOCKET CONNECTION ---');
+        console.log('Socket ID:', socket.id);
 
-        // When a device (target) registers, join a room named by its deviceId
-        // When a device (target) registers, join a room named by its deviceId
         socket.on('register-device', (data) => {
-            let rawData = typeof data === 'string' ? data : JSON.stringify(data);
-
-            // This Regex extracts everything between "deviceId=" and the "}" or the end of the string
-            const match = rawData.match(/deviceId=([^,}]+)/) || rawData.match(/"deviceId":"([^"]+)"/);
-
-            const cleanId = match ? match[1] : rawData;
-
             console.log('--- REGISTRATION ATTEMPT ---');
-            console.log('Raw data received:', rawData);
-            console.log('Extracted Clean ID:', cleanId);
 
-            if (cleanId) {
+            let deviceId = null;
+
+            // 1. If it is a clean JSON object (This is what Android is sending now!)
+            if (typeof data === 'object' && data !== null && data.deviceId) {
+                deviceId = data.deviceId;
+            }
+            // 2. Fallback for stringified JSON
+            else if (typeof data === 'string' && data.includes('{')) {
+                try {
+                    const parsed = JSON.parse(data);
+                    deviceId = parsed.deviceId;
+                } catch (e) {
+                    console.log('JSON parse failed.');
+                }
+            }
+            // 3. Fallback for raw string
+            else if (typeof data === 'string') {
+                deviceId = data;
+            }
+
+            if (deviceId) {
+                // THE CRITICAL FIX: Strip away any invisible spaces or line breaks
+                const cleanId = deviceId.trim();
+
+                // Put the phone in the room!
                 socket.join(cleanId);
-                console.log(`Success: Phone is now listening in room: ${cleanId}`);
+                console.log(`>>> SUCCESS: Device locked in room: [${cleanId}] <<<`);
+
+                // VERIFICATION: Ask the server if the room actually exists
+                const room = io.sockets.adapter.rooms.get(cleanId);
+                console.log(`>>> Room [${cleanId}] currently has ${room ? room.size : 0} occupant(s) <<<`);
+            } else {
+                console.log('>>> ERROR: Could not extract deviceId from data! <<<', data);
             }
         });
 
-        // When a viewer wants to start a session with a specific device
+        // ==========================================
+        // WebRTC Signaling Logic Below (Unchanged)
+        // ==========================================
+
         socket.on('viewer-request', (data) => {
             const { deviceId } = data;
             console.log(`Viewer ${socket.id} requesting stream from ${deviceId}`);
-            // Notify the target device (if online)
             io.to(deviceId).emit('viewer-wants-to-connect', { viewerId: socket.id });
         });
 
-        // WebRTC offer from target to viewer
         socket.on('offer', (data) => {
-            const { targetId, offer } = data; // targetId is actually the viewer's socket id? We need a consistent scheme.
-            // Let's standardize: when target creates an offer, it sends to a specific viewerId
             io.to(data.viewerId).emit('offer', { offer: data.offer, targetId: socket.id });
         });
 
-        // WebRTC answer from viewer to target
         socket.on('answer', (data) => {
             io.to(data.targetId).emit('answer', { answer: data.answer, viewerId: socket.id });
         });
 
-        // ICE candidate from either side
         socket.on('ice-candidate', (data) => {
-            // data.targetId is the intended recipient
             io.to(data.targetId).emit('ice-candidate', { candidate: data.candidate, senderId: socket.id });
         });
 

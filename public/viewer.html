@@ -81,7 +81,7 @@
 
     function connect() {
         const deviceId = document.getElementById('deviceId').value;
-        socket = io('http://localhost:3000');
+        socket = io('https://childguardian.onrender.com/');
 
         socket.on('connect', () => {
             console.log('Connected to signaling server. My socket ID:', socket.id);
@@ -151,7 +151,7 @@
         const deviceId = document.getElementById('deviceId').value;
         console.log("Sending START_STREAM to device:", deviceId);
 
-        fetch('/api/command/send', {
+        fetch('https://childguardian.onrender.com/api/command/send', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
